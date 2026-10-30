@@ -39,37 +39,44 @@ IMAGE_METADATA = load_image_metadata()
 
 def find_relevant_images(query, answer_text="", context_text="", max_images=3):
     """
-    Finds relevant sports/facility images from images/ based on matched tags.
+    Returns a random selection of campus sports photos for any sports-related query.
+    All 56 photos are genuine Presidency University sports facility photos.
     """
     if not IMAGE_METADATA:
         return []
 
-    combined_text = f"{query} {answer_text} {context_text}".lower()
-    matches = []
-
+    # Build full pool of available images
+    all_images = []
     for filename, meta in IMAGE_METADATA.items():
         img_path = os.path.join(IMAGES_DIR, filename)
-        if not os.path.exists(img_path):
-            continue
-
-        score = 0
-        cat = meta.get("category", "").lower()
-        if cat and cat in combined_text:
-            score += 3
-
-        for tag in meta.get("tags", []):
-            if tag in combined_text:
-                score += 1
-
-        if score > 0:
-            matches.append((score, {
+        if os.path.exists(img_path):
+            all_images.append({
                 "path": img_path,
-                "caption": meta.get("caption", "Presidency University Sports Facility"),
-                "category": meta.get("category", "Sports")
-            }))
+                "caption": "Presidency University Sports Facilities",
+                "category": "sports"
+            })
 
-    matches.sort(key=lambda x: x[0], reverse=True)
-    return [item[1] for item in matches[:max_images]]
+    if not all_images:
+        return []
+
+    # Always show images for any sports-related query
+    sports_keywords = [
+        "sport", "game", "facility", "facilities", "ground", "court",
+        "cricket", "football", "basketball", "badminton", "volleyball",
+        "gym", "gymnasium", "athletics", "table tennis", "kabaddi",
+        "yoga", "ncc", "nss", "council", "tournament", "activity",
+        "indoor", "outdoor", "playground", "schedule", "participation"
+    ]
+    combined = f"{query} {answer_text} {context_text}".lower()
+    is_sports = any(kw in combined for kw in sports_keywords)
+
+    if not is_sports:
+        return []
+
+    # Return a random but consistent selection based on query hash
+    rng = random.Random(hash(query[:20]))
+    selected = rng.sample(all_images, min(max_images, len(all_images)))
+    return selected
 
 
 COLLECTION_NAME = "university_knowledge_base"
