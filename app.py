@@ -1,4 +1,5 @@
 import os
+import json
 import html
 import torch
 import chromadb
@@ -22,6 +23,54 @@ st.set_page_config(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "chroma_db")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
+IMAGES_DIR = os.path.join(BASE_DIR, "images")
+METADATA_FILE = os.path.join(BASE_DIR, "image_metadata.json")
+
+def load_image_metadata():
+    if os.path.exists(METADATA_FILE):
+        try:
+            with open(METADATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+IMAGE_METADATA = load_image_metadata()
+
+def find_relevant_images(query, answer_text="", context_text="", max_images=3):
+    """
+    Finds relevant sports/facility images from images/ based on matched tags.
+    """
+    if not IMAGE_METADATA:
+        return []
+
+    combined_text = f"{query} {answer_text} {context_text}".lower()
+    matches = []
+
+    for filename, meta in IMAGE_METADATA.items():
+        img_path = os.path.join(IMAGES_DIR, filename)
+        if not os.path.exists(img_path):
+            continue
+
+        score = 0
+        cat = meta.get("category", "").lower()
+        if cat and cat in combined_text:
+            score += 3
+
+        for tag in meta.get("tags", []):
+            if tag in combined_text:
+                score += 1
+
+        if score > 0:
+            matches.append((score, {
+                "path": img_path,
+                "caption": meta.get("caption", "Presidency University Sports Facility"),
+                "category": meta.get("category", "Sports")
+            }))
+
+    matches.sort(key=lambda x: x[0], reverse=True)
+    return [item[1] for item in matches[:max_images]]
+
 
 COLLECTION_NAME = "university_knowledge_base"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -456,7 +505,8 @@ def answer_question(user_question):
                 "page": page_num
             })
 
-    return final_answer, sources
+    matched_images = find_relevant_images(user_question, final_answer, context_text)
+    return final_answer, sources, matched_images
 
 
 # --------------------------------------------------
@@ -610,6 +660,13 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+        # Display related images if present in history
+        if msg["role"] == "assistant" and msg.get("images"):
+            cols = st.columns(min(len(msg["images"]), 3))
+            for idx, img in enumerate(msg["images"]):
+                with cols[idx]:
+                    st.image(img["path"], caption=img["caption"], use_container_width=True)
+
         # Display compact 'Sources used' section if sources exist
         if msg["role"] == "assistant" and msg.get("sources"):
             with st.expander("Sources used"):
@@ -645,13 +702,20 @@ if user_query:
     with st.chat_message("assistant"):
         with st.spinner("Searching university documents..."):
             try:
-                answer, sources = answer_question(user_query)
+                answer, sources, images = answer_question(user_query)
             except Exception as e:
                 answer = "I couldn't find enough information about this in the available university documents."
                 sources = []
+                images = []
                 print(f"[SportsMate Error] {repr(e)}")
 
         st.markdown(answer)
+
+        if images:
+            cols = st.columns(min(len(images), 3))
+            for idx, img in enumerate(images):
+                with cols[idx]:
+                    st.image(img["path"], caption=img["caption"], use_container_width=True)
 
         if sources:
             with st.expander("Sources used"):
@@ -663,7 +727,8 @@ if user_query:
     st.session_state.messages.append({
         "role": "assistant",
         "content": answer,
-        "sources": sources
+        "sources": sources,
+        "images": images
     })
 
     # Rerun to cleanly finalize state and keep conversation in order
