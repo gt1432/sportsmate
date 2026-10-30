@@ -456,7 +456,7 @@ def answer_question(user_question):
     distances = results.get("distances", [[]])[0]
 
     if not documents:
-        return "I couldn't find enough information about this in the available university documents.", []
+        return "I couldn't find enough information about this in the available university documents.", [], []
 
     # Domain keywords to check document relevance without hallucinating
     sports_keywords = [
@@ -466,7 +466,9 @@ def answer_question(user_question):
         "basketball", "badminton", "volleyball", "ncc", "nss",
         "gym", "gymnasium", "ground", "court", "athletics", "track",
         "coach", "coaching", "matches", "recreation", "yoga",
-        "table tennis", "throw ball", "handbook", "schedule", "participation"
+        "table tennis", "throw ball", "handball", "kabaddi", "throwball",
+        "handbook", "schedule", "participation", "image", "photo",
+        "show", "facility", "facilities", "campus", "university"
     ]
 
     is_sports_query = any(k in user_question.lower() for k in sports_keywords)
@@ -479,7 +481,8 @@ def answer_question(user_question):
     # Guard against queries that have no sports context or excessive distance
     min_distance = min(distances) if distances else 1.0
     if not is_sports_query and (not relevant_chunks or min_distance > 0.65):
-        return "I couldn't find enough information about this in the available university documents.", []
+        imgs = find_relevant_images(user_question)
+        return "I couldn't find enough information about this in the available university documents.", [], imgs
 
     # Build context from top relevant chunks (or top retrieved chunks if distance is close)
     if relevant_chunks:
